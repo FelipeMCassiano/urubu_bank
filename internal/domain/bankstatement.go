@@ -3,9 +3,7 @@ package domain
 import "time"
 
 type BankStatemant struct {
-	Balance          int       `json:"balance"`
-	Completed_at     time.Time `json:"completed_at"`
-	Limit            int       `json:"limit"`
+	Balance          BalanceStatement
 	LastTransactions []LastTransaction
 }
 
@@ -17,4 +15,9 @@ type LastTransaction struct {
 	Payor        string    `json:"payor"`
 	Payee        string    `json:"payee"`
 	Completed_at time.Time `json:"completed_at"`
+}
+type BalanceStatement struct {
+	Balance      int       `json:"balance"`
+	Completed_at time.Time `json:"completed_at"`
+	Limit        int       `json:"limit"`
 }
