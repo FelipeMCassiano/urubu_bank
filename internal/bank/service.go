@@ -9,10 +9,10 @@ import (
 type Service interface {
 	GenerateUrubukey(ctx context.Context, id int) (domain.UrubuKey, error)
 	CreateTransaction(ctx context.Context, t domain.Transaction) (domain.TransactionResponse, error)
-	SearchClientByName(ctx context.Context, name string) (domain.ClientConsult, error)
+	SearchClientByName(ctx context.Context, name string) (domain.CostumerConsult, error)
 	GetBankStatement(ctx context.Context, id int) (domain.BankStatemant, error)
-	VerifyIfClientExists(ctx context.Context, id int) (string, error)
-	CreateNewAccount(ctx context.Context, client domain.CreateCLient) (domain.CreateCLient, error)
+	VerifyIfCostumerExists(ctx context.Context, id int) (string, error)
+	CreateNewAccount(ctx context.Context, client domain.CreateCostumer) (domain.CreatedCostumer, error)
 }
 
 type bankService struct {
@@ -30,7 +30,7 @@ func (s *bankService) CreateTransaction(ctx context.Context, t domain.Transactio
 	return response, err
 }
 
-func (s *bankService) SearchClientByName(ctx context.Context, name string) (domain.ClientConsult, error) {
+func (s *bankService) SearchClientByName(ctx context.Context, name string) (domain.CostumerConsult, error) {
 	client, err := s.repository.SearchClientByName(ctx, name)
 
 	return client, err
@@ -48,13 +48,13 @@ func (s *bankService) GenerateUrubukey(ctx context.Context, id int) (domain.Urub
 	return urubukey, err
 }
 
-func (s *bankService) CreateNewAccount(ctx context.Context, client domain.CreateCLient) (domain.CreateCLient, error) {
+func (s *bankService) CreateNewAccount(ctx context.Context, client domain.CreateCostumer) (domain.CreatedCostumer, error) {
 	response, err := s.repository.CreateNewAccount(ctx, client)
 
 	return response, err
 }
 
-func (s *bankService) VerifyIfClientExists(ctx context.Context, id int) (string, error) {
+func (s *bankService) VerifyIfCostumerExists(ctx context.Context, id int) (string, error) {
 	clientname, err := s.repository.VerifyIfClientExists(ctx, id)
 
 	return clientname, err

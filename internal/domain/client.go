@@ -1,22 +1,29 @@
 package domain
 
-type Client struct {
+type Costumer struct {
 	ID       int      `json:"id"`
 	Fullname string   `json:"fullname"`
 	Birth    string   `json:"birth"`
 	Limit    int      `json:"limit"`
 	Balance  int      `json:"balance"`
+	Password string   `json:"password"`
 	UrubuKey UrubuKey `json:"urubukey"`
 }
 
-type ClientConsult struct {
+type CostumerConsult struct {
 	Fullname string   `json:"fullname"`
 	UrubuKey UrubuKey `json:"urubukey"`
 }
 
-type CreateCLient struct {
+type CreateCostumer struct {
+	Fullname string `json:"fullname"`
+	Birth    string `json:"birth"`
+	Limit    int    `json:"limit"`
+	Password string `json:"password"`
+}
+type CreatedCostumer struct {
+	ID       int      `json:"id"`
 	Fullname string   `json:"fullname"`
-	Birth    string   `json:"birth"`
 	Limit    int      `json:"limit"`
 	UrubuKey UrubuKey `json:"urubukey"`
 }

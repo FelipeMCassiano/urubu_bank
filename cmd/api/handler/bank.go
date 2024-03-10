@@ -2,12 +2,10 @@ package handler
 
 import (
 	"errors"
-	"net/http"
-	"strconv"
 
 	"github.com/FelipeMCassiano/urubu_bank/internal/bank"
 	"github.com/FelipeMCassiano/urubu_bank/internal/domain"
-	"github.com/labstack/echo/v4"
+	"github.com/gofiber/fiber/v2"
 )
 
 var (
@@ -35,19 +33,19 @@ func NewBank(s bank.Service) *BankController {
 	}
 }
 
-func (b *BankController) CreateTransaction() echo.HandlerFunc {
-	return func(ctx echo.Context) error {
+func (b *BankController) CreateTransaction() fiber.Handler {
+	return func(ctx *fiber.Ctx) error {
 		input := &TransactionRequest{}
-		stdctx := ctx.Request().Context()
+		stdctx := ctx.Context()
 
-		if err := ctx.Bind(input); err != nil {
-			return ctx.JSON(http.StatusUnprocessableEntity, ErrInvalidJson.Error())
+		if err := ctx.BodyParser(input); err != nil {
+			return ctx.Status(fiber.StatusBadRequest).JSON(ErrInvalidJson.Error())
 		}
 
-		id, _ := strconv.Atoi(ctx.Param("id"))
-		payor, err := b.bankService.VerifyIfClientExists(stdctx, id)
+		id, _ := ctx.ParamsInt("id")
+		payor, err := b.bankService.VerifyIfCostumerExists(stdctx, id)
 		if err != nil {
-			return ctx.JSON(http.StatusNotFound, ErrNotFound.Error())
+			return ctx.Status(fiber.StatusNotFound).JSON(ErrNotFound.Error())
 		}
 
 		newtransaction := domain.Transaction{
@@ -61,11 +59,69 @@ func (b *BankController) CreateTransaction() echo.HandlerFunc {
 		response, err := b.bankService.CreateTransaction(stdctx, newtransaction)
 		if err != nil {
 			if err.Error() == ErrNotFound.Error() {
-				return ctx.JSON(http.StatusNotFound, ErrNotFound.Error())
+				return ctx.Status(fiber.StatusNotFound).JSON(ErrNotFound.Error())
 			}
-			return ctx.JSON(http.StatusInternalServerError, err.Error())
+			return ctx.Status(fiber.StatusInternalServerError).JSON(err.Error())
 		}
 
-		return ctx.JSON(http.StatusCreated, response)
+		return ctx.Status(fiber.StatusCreated).JSON(response)
+	}
+}
+
+func (b *BankController) SeachCostumerByName() fiber.Handler {
+	return func(ctx *fiber.Ctx) error {
+		name := ctx.Query("name")
+		stdctx := ctx.Context()
+
+		respose, err := b.bankService.SearchClientByName(stdctx, name)
+		if err != nil {
+			return ctx.Status(fiber.StatusNotFound).JSON(ErrNotFound.Error())
+		}
+
+		return ctx.Status(fiber.StatusOK).JSON(respose)
+	}
+}
+
+func (b *BankController) CreateNewAccount() fiber.Handler {
+	return func(ctx *fiber.Ctx) error {
+		newcostumer := domain.CreateCostumer{}
+		stdctx := ctx.Context()
+
+		if err := ctx.BodyParser(&newcostumer); err != nil {
+			return ctx.Status(fiber.StatusBadRequest).JSON(err.Error())
+		}
+
+		createdCostumer, err := b.bankService.CreateNewAccount(stdctx, newcostumer)
+		if err != nil {
+			return ctx.Status(fiber.StatusBadRequest).JSON(err.Error())
+		}
+		urubukey, err := b.bankService.GenerateUrubukey(stdctx, createdCostumer.ID)
+		if err != nil {
+			if err.Error() == "urubukey already exists" {
+				return ctx.Status(fiber.StatusInternalServerError).JSON(urubukey)
+			}
+			return ctx.Status(fiber.StatusUnprocessableEntity).JSON(err.Error())
+		}
+		createdCostumer.UrubuKey = urubukey
+
+		return ctx.Status(fiber.StatusOK).JSON(createdCostumer)
+	}
+}
+
+func (b *BankController) GetBankStatement() fiber.Handler {
+	return func(ctx *fiber.Ctx) error {
+		id, err := ctx.ParamsInt("id")
+		if err != nil {
+			return ctx.Status(fiber.StatusBadRequest).JSON(err.Error())
+		}
+
+		stdctx := ctx.Context()
+
+		bankstatement, err := b.bankService.GetBankStatement(stdctx, id)
+		if err != nil {
+			return ctx.Status(fiber.StatusNoContent).JSON(err.Error())
+		}
+
+		return ctx.Status(fiber.StatusOK).JSON(bankstatement)
 	}
 }

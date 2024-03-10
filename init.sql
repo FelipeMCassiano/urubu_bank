@@ -4,6 +4,7 @@ CREATE  TABLE clients (
 	id SERIAL PRIMARY KEY,
 	fullname TEXT NOT NULL,
     birth VARCHAR(10),  
+    password VARCHAR(30),
 	limit INTEGER NOT NULL,
     balance INTEGER NOT NULL DEFAULT 0,
     urubukey VARCHAR(10)

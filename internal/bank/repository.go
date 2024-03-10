@@ -14,8 +14,8 @@ type Respository interface {
 	CreateTransaction(ctx context.Context, t domain.Transaction) (domain.TransactionResponse, error)
 	GetBankStatement(ctx context.Context, id int) (domain.BankStatemant, error)
 	GenerateUrubuKey(ctx context.Context, id int) (domain.UrubuKey, error)
-	SearchClientByName(ctx context.Context, name string) (domain.ClientConsult, error)
-	CreateNewAccount(ctx context.Context, client domain.CreateCLient) (domain.CreateCLient, error)
+	SearchClientByName(ctx context.Context, name string) (domain.CostumerConsult, error)
+	CreateNewAccount(ctx context.Context, client domain.CreateCostumer) (domain.CreatedCostumer, error)
 	VerifyIfClientExists(ctx context.Context, id int) (string, error)
 }
 
@@ -34,15 +34,15 @@ var (
 	LimitErr    = errors.New("limit error")
 )
 
-func (r *repository) SearchClientByName(ctx context.Context, name string) (domain.ClientConsult, error) {
+func (r *repository) SearchClientByName(ctx context.Context, name string) (domain.CostumerConsult, error) {
 	result, err := r.db.Query(ctx, "SElECT fullname, urubukey FROM client WHERE similarity(fullname, %s) > 0.6", name)
 	if err != nil {
-		return domain.ClientConsult{}, err
+		return domain.CostumerConsult{}, err
 	}
 
-	client, err := pgx.CollectOneRow(result, pgx.RowToStructByPos[domain.ClientConsult])
+	client, err := pgx.CollectOneRow(result, pgx.RowToStructByPos[domain.CostumerConsult])
 	if err != nil {
-		return domain.ClientConsult{}, err
+		return domain.CostumerConsult{}, err
 	}
 
 	return client, nil
@@ -121,25 +121,25 @@ func (r *repository) CreateTransaction(ctx context.Context, t domain.Transaction
 	return response, nil
 }
 
-func (r *repository) CreateNewAccount(ctx context.Context, client domain.CreateCLient) (domain.CreateCLient, error) {
+func (r *repository) CreateNewAccount(ctx context.Context, client domain.CreateCostumer) (domain.CreatedCostumer, error) {
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
-		return domain.CreateCLient{}, err
+		return domain.CreatedCostumer{}, err
 	}
 	var fullaname, birth string
-	var limit int
+	var limit, id int
 
-	err = tx.QueryRow(context.Background(), "INSERT INTO clients (fullname, birth, limit) VALUES ($1,$2,$3,$4) RETURING fullname, birth, limit",
-		client.Fullname, client.Birth, client.Limit).Scan(&fullaname, &birth, &limit)
+	err = tx.QueryRow(context.Background(), "INSERT INTO clients (fullname, birth, limit,password) VALUES ($1,$2,$3,$4) RETURING id, fullname, birth, limit",
+		client.Fullname, client.Birth, client.Limit, client.Password).Scan(&id, &fullaname, &birth, &limit)
 	if err != nil {
-		return domain.CreateCLient{}, err
+		return domain.CreatedCostumer{}, err
 	}
 	if err := tx.Commit(context.Background()); err != nil {
-		return domain.CreateCLient{}, err
+		return domain.CreatedCostumer{}, err
 	}
-	createdClient := domain.CreateCLient{
+	createdClient := domain.CreatedCostumer{
+		ID:       id,
 		Fullname: fullaname,
-		Birth:    birth,
 		Limit:    limit,
 	}
 
@@ -162,7 +162,7 @@ func (r *repository) GenerateUrubuKey(ctx context.Context, id int) (domain.Urubu
 	}
 
 	if urubukeyexitst != "" {
-		return "", errors.New("urubukey already exitsts")
+		return domain.UrubuKey(urubukeyexitst), errors.New("urubukey already exists")
 	}
 
 	urubukeygenerated, err := password.Generate(10, 3, 3, false, false)
