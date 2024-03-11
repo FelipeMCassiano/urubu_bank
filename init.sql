@@ -3,11 +3,11 @@ CREATE EXTENSION IF NOT EXISTS pg_trgm;
 CREATE  TABLE clients (
 	id SERIAL PRIMARY KEY,
 	fullname TEXT NOT NULL,
-    birth VARCHAR(10),  
-    password VARCHAR(30),
-	limit INTEGER NOT NULL,
-    balance INTEGER NOT NULL DEFAULT 0,
-    urubukey VARCHAR(10)
+    birth VARCHAR(10) NOT NULL,  
+    password VARCHAR(30) NOT NULL,
+	credit_limit INTEGER NOT NULL,
+    balance INTEGER DEFAULT 0,
+    urubukey VARCHAR(20)
 );
 
 CREATE  TABLE transactions (
@@ -24,16 +24,3 @@ CREATE  TABLE transactions (
 );
 CREATE INDEX idx_clients_fullname_trgm ON clients USING gin (fullname gin_trgm_ops);
 
-
-DO $$
-BEGIN
-	INSERT INTO clientes (name, limit)
-	VALUES
-		('o barato sai caro', 1000 * 100),
-		('zan corp ltda', 800 * 100),
-		('les cruders', 10000 * 100),
-		('padaria joia de cocaia', 100000 * 100),
-		('kid mais', 5000 * 100);
-	
-END;
-$$;

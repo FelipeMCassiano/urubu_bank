@@ -4,14 +4,14 @@ services:
   postgres:
     image: postgres:16
     environment:
-      POSTGRES_USER: rinha
-      POSTGRES_PASSWORD: rinha
-      POSTGRES_DB: rinha
+      - POSTGRES_USER=urubu 
+      - POSTGRES_PASSWORD=urubu 
+      - POSTGRES_DB=urubu 
     ports:
       - "5432:5432"
     volumes:
-      - .init.sql:/docker-entrypoint-initdb.d/init.sql
-      - .postgresql.conf:/docker-entrypoint-initdb.d/postgresql.conf
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./postgresql.conf:/docker-entrypoint-initdb.d/postgresql.conf
     command: postgres -c config_file=/docker-entrypoint-initdb.d/postgresql.conf 
 
      

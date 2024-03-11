@@ -2,28 +2,21 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"log"
-	"os"
 
 	"github.com/FelipeMCassiano/urubu_bank/cmd/api/routes"
 	"github.com/gofiber/fiber/v2"
-	"github.com/jackc/pgx/v5/pgxpool"
+	_ "github.com/lib/pq"
 )
 
 func main() {
-	var psqlconn string = os.Getenv("DATABASE_URL")
-
-	poolConfig, err := pgxpool.ParseConfig(psqlconn)
+	db, err := sql.Open("postgres", "host=localhost user=urubu password=urubu dbname=urubu sslmode=disable")
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	db, err := pgxpool.NewWithConfig(context.Background(), poolConfig)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	err = db.Ping(context.Background())
+	err = db.PingContext(context.Background())
 	if err != nil {
 		log.Fatal(err)
 	}

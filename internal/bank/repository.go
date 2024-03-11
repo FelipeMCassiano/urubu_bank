@@ -2,11 +2,12 @@ package bank
 
 import (
 	"context"
+	"database/sql"
 	"errors"
+	"log"
+	"time"
 
 	"github.com/FelipeMCassiano/urubu_bank/internal/domain"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/sethvargo/go-password/password"
 )
 
@@ -20,10 +21,10 @@ type Respository interface {
 }
 
 type repository struct {
-	db *pgxpool.Pool
+	db *sql.DB
 }
 
-func NewRepository(db *pgxpool.Pool) Respository {
+func NewRepository(db *sql.DB) Respository {
 	return &repository{
 		db: db,
 	}
@@ -35,14 +36,25 @@ var (
 )
 
 func (r *repository) SearchClientByName(ctx context.Context, name string) (domain.CostumerConsult, error) {
-	result, err := r.db.Query(ctx, "SElECT fullname, urubukey FROM client WHERE similarity(fullname, %s) > 0.6", name)
+	result, err := r.db.QueryContext(ctx, "SElECT fullname, urubukey FROM client WHERE similarity(fullname, %s) > 0.6", name)
 	if err != nil {
 		return domain.CostumerConsult{}, err
 	}
 
-	client, err := pgx.CollectOneRow(result, pgx.RowToStructByPos[domain.CostumerConsult])
-	if err != nil {
-		return domain.CostumerConsult{}, err
+	var cname, urubukey string
+
+	if result != nil {
+		for result.Next() {
+			err := result.Scan(&cname, &urubukey)
+			if err != nil {
+				return domain.CostumerConsult{}, err
+			}
+		}
+	}
+
+	client := domain.CostumerConsult{
+		Fullname: cname,
+		UrubuKey: domain.UrubuKey(urubukey),
 	}
 
 	return client, nil
@@ -50,7 +62,7 @@ func (r *repository) SearchClientByName(ctx context.Context, name string) (domai
 
 func (r *repository) VerifyIfClientExists(ctx context.Context, id int) (string, error) {
 	var clientxists string
-	err := r.db.QueryRow(ctx, "SELECT fullname FROM clients WHERE id=$1", id).Scan(&clientxists)
+	err := r.db.QueryRowContext(ctx, "SELECT fullname FROM clients WHERE id=$1", id).Scan(&clientxists)
 	if err != nil {
 		return "", err
 	}
@@ -59,14 +71,14 @@ func (r *repository) VerifyIfClientExists(ctx context.Context, id int) (string, 
 }
 
 func (r *repository) CreateTransaction(ctx context.Context, t domain.Transaction) (domain.TransactionResponse, error) {
-	tx, err := r.db.Begin(ctx)
+	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return domain.TransactionResponse{}, err
 	}
-	defer tx.Rollback(ctx)
+	defer tx.Rollback()
 	var limit, balance, newbalance int
 
-	err = tx.QueryRow(context.Background(), "SELECT limit, balance FROM clients WHERE name=$1", t.Payor).Scan(&limit, &balance)
+	err = tx.QueryRowContext(context.Background(), "SELECT credit_limit, balance FROM clients WHERE name=$1", t.Payor).Scan(&limit, &balance)
 	if err != nil {
 		return domain.TransactionResponse{}, err
 	}
@@ -83,26 +95,24 @@ func (r *repository) CreateTransaction(ctx context.Context, t domain.Transaction
 
 	var Payee string
 
-	err = tx.QueryRow(context.Background(), "SELECT fullname FROM clients WHERE urubukey=$1", t.PayeeUrubuKey).Scan(&Payee)
+	err = tx.QueryRowContext(context.Background(), "SELECT fullname FROM clients WHERE urubukey=$1", t.PayeeUrubuKey).Scan(&Payee)
 	if err != nil {
 		return domain.TransactionResponse{}, ErrNotFound
 	}
 
-	batch := &pgx.Batch{}
-
-	batch.Queue("INSERT INTO transactions (client_id, value, kind, description, payee, completed_at, payor) VALUES($1,$2,$3,$4,$5,$6, $7)",
-		t.Client_Id, t.Value, t.Kind, t.Description, Payee, t.Completed_at, t.Payor)
-	batch.Queue("UPDATE clients SET balance WHERE urubukey =$1", t.PayeeUrubuKey)
-	sendBatch := tx.SendBatch(context.Background(), batch)
-	_, err = sendBatch.Exec()
+	stmt, err := tx.PrepareContext(context.Background(), "INSERT INTO transactions (client_id, value, kind, description, payee, completed_at, payor) VALUES(?,?,?,?,?,?,?)")
 	if err != nil {
 		return domain.TransactionResponse{}, err
 	}
-	if err := sendBatch.Close(); err != nil {
+
+	_, err = stmt.ExecContext(context.Background(), t.Client_Id, t.Value, t.Kind, t.Description, Payee, t.Completed_at, t.Payor)
+	if err != nil {
 		return domain.TransactionResponse{}, err
 	}
 
-	err = tx.Commit(context.Background())
+	defer stmt.Close()
+
+	err = tx.Commit()
 	if err != nil {
 		if err.Error() == "no rows in result set" {
 			return domain.TransactionResponse{}, ErrNotFound
@@ -122,67 +132,60 @@ func (r *repository) CreateTransaction(ctx context.Context, t domain.Transaction
 }
 
 func (r *repository) CreateNewAccount(ctx context.Context, client domain.CreateCostumer) (domain.CreatedCostumer, error) {
-	tx, err := r.db.Begin(ctx)
+	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return domain.CreatedCostumer{}, err
 	}
-	var fullaname, birth string
-	var limit, id int
 
-	err = tx.QueryRow(context.Background(), "INSERT INTO clients (fullname, birth, limit,password) VALUES ($1,$2,$3,$4) RETURING id, fullname, birth, limit",
-		client.Fullname, client.Birth, client.Limit, client.Password).Scan(&id, &fullaname, &birth, &limit)
+	createdClient := domain.CreatedCostumer{
+		Fullname: client.Fullname,
+		Limit:    client.Limit,
+	}
+
+	log.Println("Inserting client:", client)
+	var id int
+
+	err = tx.QueryRowContext(context.Background(), "INSERT INTO clients (fullname, birth, credit_limit, password) VALUES ($1, $2, $3, $4) RETURNING id",
+		client.Fullname, client.Birth, client.Limit, client.Password).Scan(&id)
 	if err != nil {
 		return domain.CreatedCostumer{}, err
 	}
-	if err := tx.Commit(context.Background()); err != nil {
+
+	if err := tx.Commit(); err != nil {
 		return domain.CreatedCostumer{}, err
 	}
-	createdClient := domain.CreatedCostumer{
-		ID:       id,
-		Fullname: fullaname,
-		Limit:    limit,
-	}
+
+	createdClient.ID = id
 
 	return createdClient, nil
 }
 
 func (r *repository) GenerateUrubuKey(ctx context.Context, id int) (domain.UrubuKey, error) {
-	tx, err := r.db.Begin(ctx)
+	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return "", err
 	}
-	defer tx.Rollback(ctx)
+	defer tx.Rollback()
+	log.Println("comecei GenerateUrubuKey")
 
-	var urubukeyexitst string
-
-	err = tx.QueryRow(context.Background(),
-		"SELECT urubukey FROM clients WHERE id=$1", id).Scan(&urubukeyexitst)
-	if err != nil {
-		return "", err
-	}
-
-	if urubukeyexitst != "" {
-		return domain.UrubuKey(urubukeyexitst), errors.New("urubukey already exists")
-	}
-
-	urubukeygenerated, err := password.Generate(10, 3, 3, false, false)
+	urubukeygenerated, err := password.Generate(20, 10, 5, false, false)
 	if err != nil {
 		return "", err
 	}
 
-	batch := &pgx.Batch{}
-	batch.Queue("UPDATE clients SET urubukey=$2 WHERE id =$1", id, urubukeygenerated)
-	sendBatch := tx.SendBatch(context.Background(), batch)
-	_, err = sendBatch.Exec()
+	stmt, err := tx.PrepareContext(context.Background(), "UPDATE clients SET urubukey=$2 WHERE id =$1")
 	if err != nil {
 		return "", err
 	}
 
-	if err := sendBatch.Close(); err != nil {
+	defer stmt.Close()
+
+	_, err = stmt.Exec(id, urubukeygenerated)
+	if err != nil {
 		return "", err
 	}
 
-	if err := tx.Commit(context.Background()); err != nil {
+	if err := tx.Commit(); err != nil {
 		return "", nil
 	}
 
@@ -190,38 +193,49 @@ func (r *repository) GenerateUrubuKey(ctx context.Context, id int) (domain.Urubu
 }
 
 func (r *repository) GetBankStatement(ctx context.Context, id int) (domain.BankStatemant, error) {
-	tx, err := r.db.Begin(ctx)
+	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return domain.BankStatemant{}, err
 	}
-	defer tx.Rollback(ctx)
+	defer tx.Rollback()
 
-	row, err := tx.Query(context.Background(), "SELECT balance, now(), limit FROM clients WHERE id=$1", id)
-	if err != nil {
-		return domain.BankStatemant{}, err
-	}
-	balanceAccount, err := pgx.CollectOneRow(row, pgx.RowToStructByPos[domain.BalanceStatement])
-	if err != nil {
-		return domain.BankStatemant{}, err
-	}
+	var balance, credit_limit int
+	var now time.Time
 
-	rows, err := tx.Query(context.Background(), "SELECT id, value, kind, description, payor, payee, completed_at FROM transactions WHERE id=$1", id)
+	err = tx.QueryRowContext(context.Background(), "SELECT balance, now(), credit_limit FROM clients WHERE id=$1", id).Scan(balance, now, credit_limit)
 	if err != nil {
 		return domain.BankStatemant{}, err
 	}
 
-	lastTransactions, err := pgx.CollectRows(rows, pgx.RowToStructByPos[domain.LastTransaction])
+	balanceAccount := domain.BalanceStatement{
+		Balance:      balance,
+		Limit:        credit_limit,
+		Completed_at: now,
+	}
+
+	rows, err := tx.QueryContext(context.Background(), "SELECT id, value, kind, description, payee, completed_at FROM transactions WHERE id=$1", id)
 	if err != nil {
 		return domain.BankStatemant{}, err
 	}
-
 	bankstatement := domain.BankStatemant{
 		Balance:          balanceAccount,
 		LastTransactions: []domain.LastTransaction{},
 	}
 
-	bankstatement.LastTransactions = append(bankstatement.LastTransactions, lastTransactions...)
-	err = tx.Commit(context.Background())
+	if rows != nil {
+		for rows.Next() {
+			var Transaction domain.LastTransaction
+			err := rows.Scan(&Transaction.ID, &Transaction.Value, &Transaction.Kind, &Transaction.Description, &Transaction.Payee, &Transaction.Completed_at)
+			if err != nil {
+				return domain.BankStatemant{}, err
+			}
+
+			bankstatement.LastTransactions = append(bankstatement.LastTransactions, Transaction)
+
+		}
+	}
+
+	err = tx.Commit()
 	if err != nil {
 		return domain.BankStatemant{}, err
 	}

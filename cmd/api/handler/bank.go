@@ -97,9 +97,6 @@ func (b *BankController) CreateNewAccount() fiber.Handler {
 		}
 		urubukey, err := b.bankService.GenerateUrubukey(stdctx, createdCostumer.ID)
 		if err != nil {
-			if err.Error() == "urubukey already exists" {
-				return ctx.Status(fiber.StatusInternalServerError).JSON(urubukey)
-			}
 			return ctx.Status(fiber.StatusUnprocessableEntity).JSON(err.Error())
 		}
 		createdCostumer.UrubuKey = urubukey
