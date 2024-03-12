@@ -38,6 +38,7 @@ func (r *router) buildRoutes() {
 
 	r.rg.Post("/costumers/:id/transacoes", handler.CreateTransaction())
 	r.rg.Post("/costumers/create", handler.CreateNewAccount())
-	r.rg.Get("costumers/:id/bankstatement", handler.GetBankStatement())
+	r.rg.Post("/costumers/:id/depositymoney", handler.DeposityMoney())
+	r.rg.Get("/costumers/:id/bankstatement", handler.GetBankStatement())
 	r.rg.Get("/costumers", handler.SeachCostumerByName())
 }

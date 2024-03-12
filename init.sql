@@ -16,7 +16,6 @@ CREATE  TABLE transactions (
 	value INTEGER NOT NULL,
 	kind CHAR(1) NOT NULL,
 	description VARCHAR(10) NOT NULL,
-	payor TEXT NOT NULL,
 	payee TEXT NOT NULL,
 	completed_at TIMESTAMP NOT NULL DEFAULT NOW(),
 	CONSTRAINT fk_clients_transactions_id

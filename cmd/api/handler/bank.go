@@ -3,6 +3,7 @@ package handler
 import (
 	"errors"
 	"log"
+	"time"
 
 	"github.com/FelipeMCassiano/urubu_bank/internal/bank"
 	"github.com/FelipeMCassiano/urubu_bank/internal/domain"
@@ -16,12 +17,16 @@ var (
 	LimitErr        = errors.New("limit error")
 )
 
-type TransactionRequest struct {
+type TransactionRequestDebit struct {
 	Value         int    `json:"value" validate:"required,gt=0"`
-	Kind          string `json:"kind" validate:"required,oneof=credit debit"`
+	Kind          string `json:"kind" validate:"required,oneof=debit"`
 	Description   string `json:"description" validate:"required, min=1, max=10"`
-	Payor         string `json:"payor"  validate:"required"`
 	PayeeUrubuKey string `json:"payeeurubukey" validate:"required"`
+}
+type TransactionRequestCredit struct {
+	Value       int    `json:"value" validate:"required,gt=0"`
+	Kind        string `json:"kind" validate:"required,oneof=credit"`
+	Description string `json:"description" validate:"required, min=1, max=10"`
 }
 
 type BankController struct {
@@ -34,9 +39,9 @@ func NewBank(s bank.Service) *BankController {
 	}
 }
 
-func (b *BankController) CreateTransaction() fiber.Handler {
+func (b *BankController) DeposityMoney() fiber.Handler {
 	return func(ctx *fiber.Ctx) error {
-		input := &TransactionRequest{}
+		input := &TransactionRequestCredit{}
 		stdctx := ctx.Context()
 
 		if err := ctx.BodyParser(input); err != nil {
@@ -44,17 +49,53 @@ func (b *BankController) CreateTransaction() fiber.Handler {
 		}
 
 		id, _ := ctx.ParamsInt("id")
+		_, err := b.bankService.VerifyIfCostumerExists(stdctx, id)
+		if err != nil {
+			return ctx.Status(fiber.StatusUnprocessableEntity).JSON(err.Error())
+		}
+
+		newtransaction := domain.TransactionCredit{
+			Client_Id:    id,
+			Value:        input.Value,
+			Kind:         input.Kind,
+			Description:  input.Description,
+			Completed_at: time.Now(),
+		}
+
+		response, err := b.bankService.DeposityMoney(stdctx, newtransaction)
+		if err != nil {
+			return err
+		}
+
+		return ctx.Status(fiber.StatusOK).JSON(response)
+	}
+}
+
+func (b *BankController) CreateTransaction() fiber.Handler {
+	return func(ctx *fiber.Ctx) error {
+		input := &TransactionRequestDebit{}
+		stdctx := ctx.Context()
+
+		if err := ctx.BodyParser(input); err != nil {
+			return ctx.Status(fiber.StatusBadRequest).JSON(ErrInvalidJson.Error())
+		}
+
+		log.Println(input.Description)
+
+		id, _ := ctx.ParamsInt("id")
 		payor, err := b.bankService.VerifyIfCostumerExists(stdctx, id)
 		if err != nil {
 			return ctx.Status(fiber.StatusNotFound).JSON(ErrNotFound.Error())
 		}
 
-		newtransaction := domain.Transaction{
+		newtransaction := domain.TransactionDebit{
+			Value:         input.Value,
 			Client_Id:     id,
 			Kind:          input.Kind,
 			Description:   input.Description,
 			Payor:         payor,
 			PayeeUrubuKey: input.PayeeUrubuKey,
+			Completed_at:  time.Now(),
 		}
 
 		response, err := b.bankService.CreateTransaction(stdctx, newtransaction)
@@ -78,9 +119,9 @@ func (b *BankController) SeachCostumerByName() fiber.Handler {
 
 		respose, err := b.bankService.SearchClientByName(stdctx, name)
 		if err != nil {
-			// return ctx.Status(fiber.StatusNotFound).JSON(ErrNotFound.Error())
+			return ctx.Status(fiber.StatusNotFound).JSON(ErrNotFound.Error())
 
-			return ctx.Status(fiber.StatusNotFound).JSON(err.Error())
+			// return ctx.Status(fiber.StatusNotFound).JSON(err.Error())
 		}
 
 		return ctx.Status(fiber.StatusOK).JSON(respose)
@@ -121,6 +162,7 @@ func (b *BankController) GetBankStatement() fiber.Handler {
 
 		bankstatement, err := b.bankService.GetBankStatement(stdctx, id)
 		if err != nil {
+			log.Println(err.Error())
 			return ctx.Status(fiber.StatusNoContent).JSON(err.Error())
 		}
 

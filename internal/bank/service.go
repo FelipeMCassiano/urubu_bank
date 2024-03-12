@@ -8,11 +8,12 @@ import (
 
 type Service interface {
 	GenerateUrubukey(ctx context.Context, id int) (domain.UrubuKey, error)
-	CreateTransaction(ctx context.Context, t domain.Transaction) (domain.TransactionResponse, error)
+	CreateTransaction(ctx context.Context, t domain.TransactionDebit) (domain.TransactionResponseDebit, error)
 	SearchClientByName(ctx context.Context, name string) ([]domain.CostumerConsult, error)
 	GetBankStatement(ctx context.Context, id int) (domain.BankStatemant, error)
 	VerifyIfCostumerExists(ctx context.Context, id int) (string, error)
 	CreateNewAccount(ctx context.Context, client domain.CreateCostumer) (domain.CreatedCostumer, error)
+	DeposityMoney(ctx context.Context, t domain.TransactionCredit) (domain.TransactionResponseCredit, error)
 }
 
 type bankService struct {
@@ -25,7 +26,13 @@ func NewService(r Respository) Service {
 	}
 }
 
-func (s *bankService) CreateTransaction(ctx context.Context, t domain.Transaction) (domain.TransactionResponse, error) {
+func (s *bankService) DeposityMoney(ctx context.Context, t domain.TransactionCredit) (domain.TransactionResponseCredit, error) {
+	response, err := s.repository.DeposityMoney(ctx, t)
+
+	return response, err
+}
+
+func (s *bankService) CreateTransaction(ctx context.Context, t domain.TransactionDebit) (domain.TransactionResponseDebit, error) {
 	response, err := s.repository.CreateTransaction(ctx, t)
 	return response, err
 }
