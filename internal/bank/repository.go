@@ -78,31 +78,32 @@ func (r *repository) DeposityMoney(ctx context.Context, t domain.TransactionCred
 		return domain.TransactionResponseCredit{}, err
 	}
 	defer tx.Rollback()
-	var limit, balance, newbalance int
+	var limit, balance int
 
 	err = tx.QueryRowContext(context.Background(), "SELECT credit_limit, balance FROM clients WHERE id=$1", t.Client_Id).Scan(&limit, &balance)
 	if err != nil {
 		return domain.TransactionResponseCredit{}, err
 	}
-	newbalance = balance + t.Value
+	newbalance := balance + t.Value
 	stmt1, err := tx.PrepareContext(context.Background(), "INSERT INTO transactions (client_id, value, kind, description, payee, completed_at) VALUES($1,$2,$3,$4,$5,$6)")
 	if err != nil {
 		return domain.TransactionResponseCredit{}, err
 	}
 	defer stmt1.Close()
 
+	log.Println(newbalance)
+
 	_, err = stmt1.ExecContext(context.Background(), t.Client_Id, t.Value, t.Kind, t.Description, "self", t.Completed_at)
 	if err != nil {
 		return domain.TransactionResponseCredit{}, err
 	}
 
-	stmt2, err := tx.PrepareContext(context.Background(), "UPDATE clients SET balance=$1 WHERE id=$2")
+	stmt2, err := tx.PrepareContext(context.Background(), "UPDATE clients SET balance=$2 WHERE id=$1")
 	if err != nil {
 		return domain.TransactionResponseCredit{}, err
 	}
-	defer stmt2.Close()
 
-	_, err = stmt2.ExecContext(context.Background(), newbalance, t.Client_Id)
+	_, err = stmt2.ExecContext(context.Background(), t.Client_Id, newbalance)
 	if err != nil {
 		return domain.TransactionResponseCredit{}, err
 	}
@@ -110,6 +111,10 @@ func (r *repository) DeposityMoney(ctx context.Context, t domain.TransactionCred
 	response := domain.TransactionResponseCredit{
 		Newbalance:   newbalance,
 		Completed_at: t.Completed_at,
+	}
+
+	if err := tx.Commit(); err != nil {
+		return domain.TransactionResponseCredit{}, err
 	}
 	return response, nil
 }
@@ -279,7 +284,7 @@ func (r *repository) GetBankStatement(ctx context.Context, id int) (domain.BankS
 		Completed_at: time.Now(),
 	}
 
-	rows, err := tx.QueryContext(context.Background(), "SELECT id, value, kind, description, payee, completed_at FROM transactions WHERE id=$1", id)
+	rows, err := tx.QueryContext(context.Background(), "SELECT id, value, kind, description, payee, completed_at FROM transactions WHERE client_id=$1", id)
 	if err != nil {
 		return domain.BankStatemant{}, err
 	}
@@ -295,6 +300,7 @@ func (r *repository) GetBankStatement(ctx context.Context, id int) (domain.BankS
 			if err != nil {
 				return domain.BankStatemant{}, err
 			}
+			log.Println(Transaction)
 
 			bankstatement.LastTransactions = append(bankstatement.LastTransactions, Transaction)
 
