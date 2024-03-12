@@ -22,5 +22,6 @@ CREATE  TABLE transactions (
 	CONSTRAINT fk_clients_transactions_id
 		FOREIGN KEY (client_id) REFERENCES clients(id)
 );
-CREATE INDEX idx_clients_fullname_trgm ON clients USING gin (fullname gin_trgm_ops);
+-- CREATE INDEX idx_clients_fullname_trgm ON clients USING gin (fullname gin_trgm_ops);
 
+CREATE INDEX idx_fullname_trgm ON clients USING gin (fullname gin_trgm_ops);

@@ -2,6 +2,7 @@ package handler
 
 import (
 	"errors"
+	"log"
 
 	"github.com/FelipeMCassiano/urubu_bank/internal/bank"
 	"github.com/FelipeMCassiano/urubu_bank/internal/domain"
@@ -73,9 +74,13 @@ func (b *BankController) SeachCostumerByName() fiber.Handler {
 		name := ctx.Query("name")
 		stdctx := ctx.Context()
 
+		log.Printf("catch a query with name %s", name)
+
 		respose, err := b.bankService.SearchClientByName(stdctx, name)
 		if err != nil {
-			return ctx.Status(fiber.StatusNotFound).JSON(ErrNotFound.Error())
+			// return ctx.Status(fiber.StatusNotFound).JSON(ErrNotFound.Error())
+
+			return ctx.Status(fiber.StatusNotFound).JSON(err.Error())
 		}
 
 		return ctx.Status(fiber.StatusOK).JSON(respose)

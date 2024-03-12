@@ -15,7 +15,7 @@ type Respository interface {
 	CreateTransaction(ctx context.Context, t domain.Transaction) (domain.TransactionResponse, error)
 	GetBankStatement(ctx context.Context, id int) (domain.BankStatemant, error)
 	GenerateUrubuKey(ctx context.Context, id int) (domain.UrubuKey, error)
-	SearchClientByName(ctx context.Context, name string) (domain.CostumerConsult, error)
+	SearchClientByName(ctx context.Context, name string) ([]domain.CostumerConsult, error)
 	CreateNewAccount(ctx context.Context, client domain.CreateCostumer) (domain.CreatedCostumer, error)
 	VerifyIfClientExists(ctx context.Context, id int) (string, error)
 }
@@ -35,29 +35,30 @@ var (
 	LimitErr    = errors.New("limit error")
 )
 
-func (r *repository) SearchClientByName(ctx context.Context, name string) (domain.CostumerConsult, error) {
-	result, err := r.db.QueryContext(ctx, "SElECT fullname, urubukey FROM client WHERE similarity(fullname, %s) > 0.6", name)
+func (r *repository) SearchClientByName(ctx context.Context, name string) ([]domain.CostumerConsult, error) {
+	result, err := r.db.QueryContext(ctx, "SElECT fullname, urubukey FROM clients WHERE fullname ILIKE '%' || $1 || '%'", name)
 	if err != nil {
-		return domain.CostumerConsult{}, err
+		return []domain.CostumerConsult{}, err
 	}
-
-	var cname, urubukey string
+	var SliceOfClients []domain.CostumerConsult
 
 	if result != nil {
 		for result.Next() {
+			var cname, urubukey string
 			err := result.Scan(&cname, &urubukey)
 			if err != nil {
-				return domain.CostumerConsult{}, err
+				return []domain.CostumerConsult{}, err
 			}
+			client := domain.CostumerConsult{
+				Fullname: cname,
+				UrubuKey: domain.UrubuKey(urubukey),
+			}
+
+			SliceOfClients = append(SliceOfClients, client)
 		}
 	}
 
-	client := domain.CostumerConsult{
-		Fullname: cname,
-		UrubuKey: domain.UrubuKey(urubukey),
-	}
-
-	return client, nil
+	return SliceOfClients, nil
 }
 
 func (r *repository) VerifyIfClientExists(ctx context.Context, id int) (string, error) {

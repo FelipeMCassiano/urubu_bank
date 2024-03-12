@@ -9,7 +9,7 @@ import (
 type Service interface {
 	GenerateUrubukey(ctx context.Context, id int) (domain.UrubuKey, error)
 	CreateTransaction(ctx context.Context, t domain.Transaction) (domain.TransactionResponse, error)
-	SearchClientByName(ctx context.Context, name string) (domain.CostumerConsult, error)
+	SearchClientByName(ctx context.Context, name string) ([]domain.CostumerConsult, error)
 	GetBankStatement(ctx context.Context, id int) (domain.BankStatemant, error)
 	VerifyIfCostumerExists(ctx context.Context, id int) (string, error)
 	CreateNewAccount(ctx context.Context, client domain.CreateCostumer) (domain.CreatedCostumer, error)
@@ -30,10 +30,10 @@ func (s *bankService) CreateTransaction(ctx context.Context, t domain.Transactio
 	return response, err
 }
 
-func (s *bankService) SearchClientByName(ctx context.Context, name string) (domain.CostumerConsult, error) {
-	client, err := s.repository.SearchClientByName(ctx, name)
+func (s *bankService) SearchClientByName(ctx context.Context, name string) ([]domain.CostumerConsult, error) {
+	clients, err := s.repository.SearchClientByName(ctx, name)
 
-	return client, err
+	return clients, err
 }
 
 func (s *bankService) GetBankStatement(ctx context.Context, id int) (domain.BankStatemant, error) {
