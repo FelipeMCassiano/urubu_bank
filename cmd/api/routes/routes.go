@@ -5,6 +5,7 @@ import (
 
 	"github.com/FelipeMCassiano/urubu_bank/cmd/api/handler"
 	"github.com/FelipeMCassiano/urubu_bank/internal/bank"
+	"github.com/go-redis/redis"
 	"github.com/gofiber/fiber/v2"
 )
 
@@ -13,13 +14,14 @@ type Router interface {
 }
 
 type router struct {
-	eng *fiber.App
-	rg  fiber.Router
-	db  *sql.DB
+	eng   *fiber.App
+	rg    fiber.Router
+	db    *sql.DB
+	redis *redis.Client
 }
 
-func NewRouter(eng *fiber.App, db *sql.DB) Router {
-	return &router{eng: eng, db: db}
+func NewRouter(eng *fiber.App, db *sql.DB, redis *redis.Client) Router {
+	return &router{eng: eng, db: db, redis: redis}
 }
 
 func (r *router) MapRoutes() {
@@ -32,13 +34,15 @@ func (r *router) setGroup() {
 }
 
 func (r *router) buildRoutes() {
-	repo := bank.NewRepository(r.db)
+	repo := bank.NewRepository(r.db, r.redis)
 	service := bank.NewService(repo)
 	handler := handler.NewBank(service)
 
-	r.rg.Post("/costumers/:id/transacoes", handler.CreateTransaction())
+	r.rg.Post("/costumers/:id/transacoes", handler.IsAuthenticated(), handler.CreateTransaction())
 	r.rg.Post("/costumers/create", handler.CreateNewAccount())
-	r.rg.Post("/costumers/:id/depositymoney", handler.DeposityMoney())
-	r.rg.Get("/costumers/:id/bankstatement", handler.GetBankStatement())
-	r.rg.Get("/costumers", handler.SeachCostumerByName())
+	r.rg.Post("/costumers/:id/depositymoney", handler.IsAuthenticated(), handler.DeposityMoney())
+	r.rg.Get("/costumers/:id/bankstatement", handler.IsAuthenticated(), handler.GetBankStatement())
+	r.rg.Get("/costumers/search", handler.IsAuthenticated(), handler.SearchCostumerByName())
+	r.rg.Post("/costumers/login", handler.Login())
+	r.rg.Get("/costumers/logout", handler.IsAuthenticated(), handler.Logout())
 }

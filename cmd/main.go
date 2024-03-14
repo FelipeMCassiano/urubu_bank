@@ -6,6 +6,7 @@ import (
 	"log"
 
 	"github.com/FelipeMCassiano/urubu_bank/cmd/api/routes"
+	"github.com/go-redis/redis"
 	"github.com/gofiber/fiber/v2"
 	_ "github.com/lib/pq"
 )
@@ -25,9 +26,18 @@ func main() {
 
 	log.Println("Connected!")
 
+	redisClient := redis.NewClient(&redis.Options{
+		Addr:     "localhost:6379",
+		Password: "",
+		DB:       0,
+	})
+	if err := redisClient.Ping().Err(); err != nil {
+		log.Fatal(err)
+	}
+
 	eng := fiber.New()
 
-	router := routes.NewRouter(eng, db)
+	router := routes.NewRouter(eng, db, redisClient)
 	router.MapRoutes()
 
 	if err := eng.Listen(":8080"); err != nil {

@@ -7,7 +7,7 @@ CREATE  TABLE clients (
     password VARCHAR(30) NOT NULL,
 	credit_limit INTEGER NOT NULL,
     balance INTEGER DEFAULT 0,
-    urubukey VARCHAR(20)
+    urubukey  TEXT 
 );
 
 CREATE  TABLE transactions (

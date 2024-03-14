@@ -1,5 +1,10 @@
 package domain
 
+type User struct {
+	Username string
+	Password string
+}
+
 type Costumer struct {
 	ID       int      `json:"id"`
 	Fullname string   `json:"fullname"`

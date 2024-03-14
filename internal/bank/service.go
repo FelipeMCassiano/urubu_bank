@@ -14,6 +14,10 @@ type Service interface {
 	VerifyIfCostumerExists(ctx context.Context, id int) (string, error)
 	CreateNewAccount(ctx context.Context, client domain.CreateCostumer) (domain.CreatedCostumer, error)
 	DeposityMoney(ctx context.Context, t domain.TransactionCredit) (domain.TransactionResponseCredit, error)
+	GetUsernameAndPassword(ctx context.Context, name string) (domain.User, error)
+	CreateSessionToken() (string, error)
+	DeleteSessionToken() error
+	VerifyIfTokenExists(token string) error
 }
 
 type bankService struct {
@@ -24,6 +28,29 @@ func NewService(r Respository) Service {
 	return &bankService{
 		repository: r,
 	}
+}
+
+func (s *bankService) VerifyIfTokenExists(token string) error {
+	err := s.repository.VerifyIfTokenExists(token)
+
+	return err
+}
+
+func (s *bankService) DeleteSessionToken() error {
+	err := s.repository.DeleteSessionToken()
+
+	return err
+}
+
+func (s *bankService) CreateSessionToken() (string, error) {
+	token, err := s.repository.CreateSessionToken()
+
+	return token, err
+}
+
+func (s *bankService) GetUsernameAndPassword(ctx context.Context, name string) (domain.User, error) {
+	response, err := s.repository.GetUsernameAndPassword(ctx, name)
+	return response, err
 }
 
 func (s *bankService) DeposityMoney(ctx context.Context, t domain.TransactionCredit) (domain.TransactionResponseCredit, error) {

@@ -39,6 +39,70 @@ func NewBank(s bank.Service) *BankController {
 	}
 }
 
+func (b *BankController) IsAuthenticated() fiber.Handler {
+	return func(ctx *fiber.Ctx) error {
+		sessionName := "session-name"
+		token := ctx.Cookies(sessionName)
+		if token == "" {
+			return ctx.Status(fiber.StatusUnauthorized).SendString("Unauthorized")
+		}
+
+		if err := b.bankService.VerifyIfTokenExists(token); err != nil {
+			return ctx.Status(fiber.StatusUnauthorized).SendString("Invalid Session token")
+		}
+
+		return ctx.Next()
+	}
+}
+
+func (b *BankController) Login() fiber.Handler {
+	return func(ctx *fiber.Ctx) error {
+		username := ctx.FormValue("username")
+		password := ctx.FormValue("password")
+
+		user, err := b.bankService.GetUsernameAndPassword(ctx.Context(), username)
+		if err != nil {
+			return err
+		}
+
+		if user.Password != password {
+			return ctx.Status(fiber.StatusUnauthorized).SendString("Invalid password or usesrname")
+		}
+
+		token, err := b.bankService.CreateSessionToken()
+		if err != nil {
+			return err
+		}
+
+		sessionName := "session-name"
+
+		ctx.Cookie(&fiber.Cookie{
+			Name:     sessionName,
+			Value:    token,
+			Expires:  time.Now().Add(24 * time.Hour),
+			HTTPOnly: true,
+		})
+
+		ctx.ClearCookie(sessionName)
+
+		return ctx.SendString("Login successful")
+	}
+}
+
+func (b *BankController) Logout() fiber.Handler {
+	return func(ctx *fiber.Ctx) error {
+		err := b.bankService.DeleteSessionToken()
+		if err != nil {
+			return ctx.Status(fiber.StatusInternalServerError).JSON(err.Error())
+		}
+
+		sessionName := "session-name"
+
+		ctx.ClearCookie(sessionName)
+		return ctx.SendString("Logout successful")
+	}
+}
+
 func (b *BankController) DeposityMoney() fiber.Handler {
 	return func(ctx *fiber.Ctx) error {
 		input := &TransactionRequestCredit{}
@@ -110,7 +174,7 @@ func (b *BankController) CreateTransaction() fiber.Handler {
 	}
 }
 
-func (b *BankController) SeachCostumerByName() fiber.Handler {
+func (b *BankController) SearchCostumerByName() fiber.Handler {
 	return func(ctx *fiber.Ctx) error {
 		name := ctx.Query("name")
 		stdctx := ctx.Context()
