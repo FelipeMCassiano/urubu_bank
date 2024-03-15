@@ -15,18 +15,18 @@ import (
 )
 
 type Respository interface {
-	CreateTransaction(ctx context.Context, t domain.TransactionDebit) (domain.TransactionResponseDebit, error)
 	GetBankStatement(ctx context.Context, id int) (domain.BankStatemant, error)
 	GenerateUrubuKey(ctx context.Context, id int) (domain.UrubuKey, error)
 	SearchClientByName(ctx context.Context, name string) ([]domain.CostumerConsult, error)
 	CreateNewAccount(ctx context.Context, client domain.CreateCostumer) (domain.CreatedCostumer, error)
 	VerifyIfClientExists(ctx context.Context, id int) (string, error)
-	DeposityMoney(ctx context.Context, t domain.TransactionCredit) (domain.TransactionResponseCredit, error)
 	GetUsernameAndPassword(ctx context.Context, name string) (domain.User, error)
 	CreateSessionToken(sessionName string) (string, error)
 	DeleteSessionToken(sessionName string) error
 	VerifyIfTokenExists(token string) error
 	RetrieveCookies(sessionName string) (string, error)
+	DeposityMoney(ctx context.Context, t domain.TransactionCredit, result chan domain.TransactionResponseCredit, errChan chan error)
+	CreateTransaction(ctx context.Context, t domain.TransactionDebit, result chan domain.TransactionResponseDebit, errChan chan error)
 }
 
 type repository struct {
@@ -160,11 +160,12 @@ func (r *repository) VerifyIfClientExists(ctx context.Context, id int) (string, 
 	return clientxists, nil
 }
 
-func (r *repository) DeposityMoney(ctx context.Context, t domain.TransactionCredit) (domain.TransactionResponseCredit, error) {
+func (r *repository) DeposityMoney(ctx context.Context, t domain.TransactionCredit, result chan domain.TransactionResponseCredit, errChan chan error) {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		_ = tx.Rollback()
-		return domain.TransactionResponseCredit{}, err
+		errChan <- err
+		return
 	}
 	defer tx.Rollback()
 	var limit, balance int
@@ -172,13 +173,15 @@ func (r *repository) DeposityMoney(ctx context.Context, t domain.TransactionCred
 	err = tx.QueryRowContext(context.Background(), "SELECT credit_limit, balance FROM clients WHERE id=$1 FOR UPDATE", t.Client_Id).Scan(&limit, &balance)
 	if err != nil {
 		_ = tx.Rollback()
-		return domain.TransactionResponseCredit{}, err
+		errChan <- err
+		return
 	}
 	newbalance := balance + t.Value
 	stmt1, err := tx.PrepareContext(context.Background(), "INSERT INTO transactions (client_id, value, kind, description, payee, completed_at) VALUES($1,$2,$3,$4,$5,$6)")
 	if err != nil {
 		_ = tx.Rollback()
-		return domain.TransactionResponseCredit{}, err
+		errChan <- err
+		return
 	}
 	defer stmt1.Close()
 
@@ -187,19 +190,24 @@ func (r *repository) DeposityMoney(ctx context.Context, t domain.TransactionCred
 	_, err = stmt1.ExecContext(context.Background(), t.Client_Id, t.Value, t.Kind, t.Description, "self", t.Completed_at)
 	if err != nil {
 		_ = tx.Rollback()
-		return domain.TransactionResponseCredit{}, err
+		errChan <- err
+
+		return
 	}
 
 	stmt2, err := tx.PrepareContext(context.Background(), "UPDATE clients SET balance=$2 WHERE id=$1")
 	if err != nil {
 		_ = tx.Rollback()
-		return domain.TransactionResponseCredit{}, err
+		errChan <- err
+		return
 	}
 
 	_, err = stmt2.ExecContext(context.Background(), t.Client_Id, newbalance)
 	if err != nil {
 		_ = tx.Rollback()
-		return domain.TransactionResponseCredit{}, err
+		errChan <- err
+
+		return
 	}
 
 	response := domain.TransactionResponseCredit{
@@ -209,15 +217,19 @@ func (r *repository) DeposityMoney(ctx context.Context, t domain.TransactionCred
 
 	if err := tx.Commit(); err != nil {
 		_ = tx.Rollback()
-		return domain.TransactionResponseCredit{}, err
+		errChan <- err
+		return
 	}
-	return response, nil
+
+	result <- response
+	return
 }
 
-func (r *repository) CreateTransaction(ctx context.Context, t domain.TransactionDebit) (domain.TransactionResponseDebit, error) {
+func (r *repository) CreateTransaction(ctx context.Context, t domain.TransactionDebit, result chan domain.TransactionResponseDebit, errChan chan error) {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
-		return domain.TransactionResponseDebit{}, err
+		errChan <- err
+		return
 	}
 	defer tx.Rollback()
 	var limit, balance int
@@ -225,7 +237,9 @@ func (r *repository) CreateTransaction(ctx context.Context, t domain.Transaction
 	err = tx.QueryRowContext(context.Background(), "SELECT credit_limit, balance FROM clients WHERE fullname=$1", t.Payor).Scan(&limit, &balance)
 	if err != nil {
 		_ = tx.Rollback()
-		return domain.TransactionResponseDebit{}, err
+		errChan <- err
+
+		return
 	}
 
 	log.Println(balance)
@@ -235,7 +249,9 @@ func (r *repository) CreateTransaction(ctx context.Context, t domain.Transaction
 
 	if (newbalance + limit) < 0 {
 		_ = tx.Rollback()
-		return domain.TransactionResponseDebit{}, LimitErr
+		errChan <- err
+
+		return
 	}
 
 	var Payee string
@@ -243,43 +259,57 @@ func (r *repository) CreateTransaction(ctx context.Context, t domain.Transaction
 	err = tx.QueryRowContext(context.Background(), "SELECT fullname FROM clients WHERE urubukey=$1", t.PayeeUrubuKey).Scan(&Payee)
 	if err != nil {
 		_ = tx.Rollback()
-		return domain.TransactionResponseDebit{}, ErrNotFound
+		errChan <- err
+
+		return
 	}
 
 	stmt1, err := tx.PrepareContext(context.Background(), "INSERT INTO transactions (client_id, value, kind, description, payee, completed_at) VALUES($1,$2,$3,$4,$5,$6)")
 	if err != nil {
 		_ = tx.Rollback()
-		return domain.TransactionResponseDebit{}, err
+		errChan <- err
+
+		return
 	}
 
 	_, err = stmt1.ExecContext(context.Background(), t.Client_Id, t.Value, t.Kind, t.Description, Payee, t.Completed_at)
 	if err != nil {
 		_ = tx.Rollback()
-		return domain.TransactionResponseDebit{}, err
+		errChan <- err
+
+		return
 	}
 
 	stmt2, err := tx.PrepareContext(context.Background(), "UPDATE clients SET balance=$2 WHERE fullname=$1")
 	if err != nil {
 		_ = tx.Rollback()
-		return domain.TransactionResponseDebit{}, err
+		errChan <- err
+
+		return
 	}
 
 	_, err = stmt2.ExecContext(context.Background(), t.Payor, newbalance)
 	if err != nil {
 		_ = tx.Rollback()
-		return domain.TransactionResponseDebit{}, err
+		errChan <- err
+
+		return
 	}
 
 	stmt3, err := tx.PrepareContext(context.Background(), "UPDATE clients SET balance = balance + $2 WHERE urubukey=$1")
 	if err != nil {
 		_ = tx.Rollback()
-		return domain.TransactionResponseDebit{}, err
+		errChan <- err
+
+		return
 	}
 
 	_, err = stmt3.ExecContext(context.Background(), t.PayeeUrubuKey, t.Value)
 	if err != nil {
 		_ = tx.Rollback()
-		return domain.TransactionResponseDebit{}, err
+		errChan <- err
+
+		return
 	}
 
 	defer stmt1.Close()
@@ -290,9 +320,13 @@ func (r *repository) CreateTransaction(ctx context.Context, t domain.Transaction
 	if err != nil {
 		if err.Error() == "no rows in result set" {
 			_ = tx.Rollback()
-			return domain.TransactionResponseDebit{}, ErrNotFound
+			errChan <- ErrNotFound
+
+			return
 		}
-		return domain.TransactionResponseDebit{}, err
+		errChan <- err
+
+		return
 	}
 
 	response := domain.TransactionResponseDebit{
@@ -305,7 +339,9 @@ func (r *repository) CreateTransaction(ctx context.Context, t domain.Transaction
 		Balance:      newbalance,
 	}
 
-	return response, nil
+	result <- response
+
+	return
 }
 
 func (r *repository) CreateNewAccount(ctx context.Context, client domain.CreateCostumer) (domain.CreatedCostumer, error) {

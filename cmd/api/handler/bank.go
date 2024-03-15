@@ -134,12 +134,19 @@ func (b *BankController) DeposityMoney() fiber.Handler {
 			Completed_at: time.Now(),
 		}
 
-		response, err := b.bankService.DeposityMoney(stdctx, newtransaction)
-		if err != nil {
-			return err
-		}
+		result := make(chan domain.TransactionResponseCredit, 1)
+		errChan := make(chan error, 1)
 
-		return ctx.Status(fiber.StatusOK).JSON(response)
+		go b.bankService.DeposityMoney(stdctx, newtransaction, result, errChan)
+
+		select {
+		case response := <-result:
+
+			return ctx.Status(fiber.StatusOK).JSON(response)
+		case err := <-errChan:
+
+			return ctx.Status(fiber.StatusUnprocessableEntity).JSON(err.Error())
+		}
 	}
 }
 
@@ -169,16 +176,21 @@ func (b *BankController) CreateTransaction() fiber.Handler {
 			PayeeUrubuKey: input.PayeeUrubuKey,
 			Completed_at:  time.Now(),
 		}
+		result := make(chan domain.TransactionResponseDebit, 1)
+		errChan := make(chan error, 1)
 
-		response, err := b.bankService.CreateTransaction(stdctx, newtransaction)
-		if err != nil {
+		go b.bankService.CreateTransaction(stdctx, newtransaction, result, errChan)
+
+		select {
+		case response := <-result:
+			return ctx.Status(fiber.StatusCreated).JSON(response)
+		case err := <-errChan:
 			if err.Error() == ErrNotFound.Error() {
 				return ctx.Status(fiber.StatusNotFound).JSON(ErrNotFound.Error())
 			}
 			return ctx.Status(fiber.StatusInternalServerError).JSON(err.Error())
-		}
 
-		return ctx.Status(fiber.StatusCreated).JSON(response)
+		}
 	}
 }
 

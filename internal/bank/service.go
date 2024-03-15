@@ -8,17 +8,17 @@ import (
 
 type Service interface {
 	GenerateUrubukey(ctx context.Context, id int) (domain.UrubuKey, error)
-	CreateTransaction(ctx context.Context, t domain.TransactionDebit) (domain.TransactionResponseDebit, error)
 	SearchClientByName(ctx context.Context, name string) ([]domain.CostumerConsult, error)
 	GetBankStatement(ctx context.Context, id int) (domain.BankStatemant, error)
 	VerifyIfCostumerExists(ctx context.Context, id int) (string, error)
 	CreateNewAccount(ctx context.Context, client domain.CreateCostumer) (domain.CreatedCostumer, error)
-	DeposityMoney(ctx context.Context, t domain.TransactionCredit) (domain.TransactionResponseCredit, error)
 	GetUsernameAndPassword(ctx context.Context, name string) (domain.User, error)
 	CreateSessionToken(sessionName string) (string, error)
 	DeleteSessionToken(sessionName string) error
 	VerifyIfTokenExists(token string) error
 	RetrieveCookies(sessionName string) (string, error)
+	DeposityMoney(ctx context.Context, t domain.TransactionCredit, result chan domain.TransactionResponseCredit, errChan chan error)
+	CreateTransaction(ctx context.Context, t domain.TransactionDebit, result chan domain.TransactionResponseDebit, errChan chan error)
 }
 
 type bankService struct {
@@ -60,15 +60,14 @@ func (s *bankService) GetUsernameAndPassword(ctx context.Context, name string) (
 	return response, err
 }
 
-func (s *bankService) DeposityMoney(ctx context.Context, t domain.TransactionCredit) (domain.TransactionResponseCredit, error) {
-	response, err := s.repository.DeposityMoney(ctx, t)
+func (s *bankService) DeposityMoney(ctx context.Context, t domain.TransactionCredit, result chan domain.TransactionResponseCredit, errChan chan error) {
+	s.repository.DeposityMoney(ctx, t, result, errChan)
 
-	return response, err
+	return
 }
 
-func (s *bankService) CreateTransaction(ctx context.Context, t domain.TransactionDebit) (domain.TransactionResponseDebit, error) {
-	response, err := s.repository.CreateTransaction(ctx, t)
-	return response, err
+func (s *bankService) CreateTransaction(ctx context.Context, t domain.TransactionDebit, result chan domain.TransactionResponseDebit, errChan chan error) {
+	s.repository.CreateTransaction(ctx, t, result, errChan)
 }
 
 func (s *bankService) SearchClientByName(ctx context.Context, name string) ([]domain.CostumerConsult, error) {
