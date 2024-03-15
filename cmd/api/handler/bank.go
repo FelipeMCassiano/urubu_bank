@@ -2,11 +2,13 @@ package handler
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"time"
 
 	"github.com/FelipeMCassiano/urubu_bank/internal/bank"
 	"github.com/FelipeMCassiano/urubu_bank/internal/domain"
+	"github.com/go-redis/redis"
 	"github.com/gofiber/fiber/v2"
 )
 
@@ -39,10 +41,19 @@ func NewBank(s bank.Service) *BankController {
 	}
 }
 
+const sessionName = "session-name"
+
 func (b *BankController) IsAuthenticated() fiber.Handler {
 	return func(ctx *fiber.Ctx) error {
-		sessionName := "session-name"
-		token := ctx.Cookies(sessionName)
+		token, err := b.bankService.RetrieveCookies(sessionName)
+		if err != nil {
+			if err == redis.Nil {
+				return ctx.Status(fiber.StatusUnauthorized).SendString("Unauthorized")
+			}
+			return ctx.Status(fiber.StatusInternalServerError).JSON(err.Error())
+		}
+
+		fmt.Printf("token: %v\n", token)
 		if token == "" {
 			return ctx.Status(fiber.StatusUnauthorized).SendString("Unauthorized")
 		}
@@ -69,12 +80,13 @@ func (b *BankController) Login() fiber.Handler {
 			return ctx.Status(fiber.StatusUnauthorized).SendString("Invalid password or usesrname")
 		}
 
-		token, err := b.bankService.CreateSessionToken()
+		token, err := b.bankService.CreateSessionToken(sessionName)
 		if err != nil {
 			return err
 		}
+		log.Println(sessionName)
 
-		sessionName := "session-name"
+		log.Println(token)
 
 		ctx.Cookie(&fiber.Cookie{
 			Name:     sessionName,
@@ -83,20 +95,16 @@ func (b *BankController) Login() fiber.Handler {
 			HTTPOnly: true,
 		})
 
-		ctx.ClearCookie(sessionName)
-
 		return ctx.SendString("Login successful")
 	}
 }
 
 func (b *BankController) Logout() fiber.Handler {
 	return func(ctx *fiber.Ctx) error {
-		err := b.bankService.DeleteSessionToken()
+		err := b.bankService.DeleteSessionToken(sessionName)
 		if err != nil {
 			return ctx.Status(fiber.StatusInternalServerError).JSON(err.Error())
 		}
-
-		sessionName := "session-name"
 
 		ctx.ClearCookie(sessionName)
 		return ctx.SendString("Logout successful")

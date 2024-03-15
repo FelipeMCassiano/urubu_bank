@@ -23,9 +23,10 @@ type Respository interface {
 	VerifyIfClientExists(ctx context.Context, id int) (string, error)
 	DeposityMoney(ctx context.Context, t domain.TransactionCredit) (domain.TransactionResponseCredit, error)
 	GetUsernameAndPassword(ctx context.Context, name string) (domain.User, error)
-	CreateSessionToken() (string, error)
-	DeleteSessionToken() error
+	CreateSessionToken(sessionName string) (string, error)
+	DeleteSessionToken(sessionName string) error
 	VerifyIfTokenExists(token string) error
+	RetrieveCookies(sessionName string) (string, error)
 }
 
 type repository struct {
@@ -54,9 +55,15 @@ func (r *repository) VerifyIfTokenExists(token string) error {
 	return nil
 }
 
-func (r *repository) CreateSessionToken() (string, error) {
-	sessionName := "session-name"
+func (r *repository) RetrieveCookies(sessionName string) (string, error) {
+	token, err := r.redis.Get(sessionName).Result()
+	if err != nil {
+		return "", err
+	}
+	return token, err
+}
 
+func (r *repository) CreateSessionToken(sessionName string) (string, error) {
 	uuiD, _ := uuid.NewV4()
 	token := base64.URLEncoding.EncodeToString([]byte(uuiD.String()))
 	err := r.redis.Set(sessionName, token, 24*time.Hour).Err()
@@ -67,8 +74,7 @@ func (r *repository) CreateSessionToken() (string, error) {
 	return token, nil
 }
 
-func (r *repository) DeleteSessionToken() error {
-	sessionName := "session-name"
+func (r *repository) DeleteSessionToken(sessionName string) error {
 	err := r.redis.Del(sessionName).Err()
 	if err != nil {
 		return err
@@ -83,13 +89,15 @@ func (r *repository) GetUsernameAndPassword(ctx context.Context, name string) (d
 	if err.Error() != "redis: nil" {
 		return domain.User{}, err
 	}
+
 	log.Println("pass 1")
 
 	if userRedis != "" {
-		if err := json.Unmarshal([]byte(userRedis), &user); err != nil {
+		var userCached domain.User
+		if err := json.Unmarshal([]byte(userRedis), &userCached); err != nil {
 			return domain.User{}, err
 		}
-		return user, nil
+		return userCached, nil
 	}
 
 	log.Println("pass 2")
