@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strconv"
 	"time"
 
 	"github.com/FelipeMCassiano/urubu_bank/internal/bank"
@@ -42,6 +43,46 @@ func NewBank(s bank.Service) *BankController {
 }
 
 const sessionName = "session-name"
+
+func (b *BankController) UrubuTrading() fiber.Handler {
+	return func(ctx *fiber.Ctx) error {
+		username := ctx.FormValue("username")
+		val := ctx.FormValue("value")
+		password := ctx.FormValue("password")
+
+		value, _ := strconv.Atoi(val)
+
+		user, err := b.bankService.GetUsernameAndPassword(ctx.Context(), username)
+		if err != nil {
+			return ctx.Status(fiber.StatusNotFound).SendString(err.Error())
+		}
+
+		if password != user.Password {
+			return ctx.Status(fiber.StatusUnauthorized).SendString("Password not correct")
+		}
+
+		result := make(chan domain.ValueTraded, 1)
+		errChan := make(chan error, 1)
+
+		go b.bankService.UrubuTrading(ctx.Context(), user, value, result, errChan)
+
+		select {
+		case response := <-result:
+			if response == 0 {
+				return ctx.SendString("Thank you for money dumbass")
+			}
+			return ctx.JSON(fiber.Map{
+				"Congratulations,you've earned": response,
+			})
+
+		case err := <-errChan:
+			if err.Error() == "value bigger than balance" {
+				return ctx.Status(fiber.StatusUnprocessableEntity).JSON(err.Error())
+			}
+			return ctx.Status(fiber.StatusInternalServerError).JSON(err.Error())
+		}
+	}
+}
 
 func (b *BankController) IsAuthenticated() fiber.Handler {
 	return func(ctx *fiber.Ctx) error {
@@ -187,6 +228,9 @@ func (b *BankController) CreateTransaction() fiber.Handler {
 		case err := <-errChan:
 			if err.Error() == ErrNotFound.Error() {
 				return ctx.Status(fiber.StatusNotFound).JSON(ErrNotFound.Error())
+			}
+			if err.Error() == LimitErr.Error() {
+				return ctx.Status(fiber.StatusUnprocessableEntity).JSON(err.Error())
 			}
 			return ctx.Status(fiber.StatusInternalServerError).JSON(err.Error())
 

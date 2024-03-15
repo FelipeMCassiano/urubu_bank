@@ -19,6 +19,7 @@ type Service interface {
 	RetrieveCookies(sessionName string) (string, error)
 	DeposityMoney(ctx context.Context, t domain.TransactionCredit, result chan domain.TransactionResponseCredit, errChan chan error)
 	CreateTransaction(ctx context.Context, t domain.TransactionDebit, result chan domain.TransactionResponseDebit, errChan chan error)
+	UrubuTrading(ctx context.Context, user domain.User, value int, result chan domain.ValueTraded, errChan chan error)
 }
 
 type bankService struct {
@@ -29,6 +30,10 @@ func NewService(r Respository) Service {
 	return &bankService{
 		repository: r,
 	}
+}
+
+func (s *bankService) UrubuTrading(ctx context.Context, user domain.User, value int, result chan domain.ValueTraded, errChan chan error) {
+	s.repository.UrubuTrading(ctx, user, value, result, errChan)
 }
 
 func (s *bankService) RetrieveCookies(sessionName string) (string, error) {

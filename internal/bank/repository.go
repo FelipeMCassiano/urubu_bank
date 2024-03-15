@@ -27,6 +27,7 @@ type Respository interface {
 	RetrieveCookies(sessionName string) (string, error)
 	DeposityMoney(ctx context.Context, t domain.TransactionCredit, result chan domain.TransactionResponseCredit, errChan chan error)
 	CreateTransaction(ctx context.Context, t domain.TransactionDebit, result chan domain.TransactionResponseDebit, errChan chan error)
+	UrubuTrading(ctx context.Context, user domain.User, value int, result chan domain.ValueTraded, errChan chan error)
 }
 
 type repository struct {
@@ -44,6 +45,7 @@ func NewRepository(db *sql.DB, redis *redis.Client) Respository {
 var (
 	ErrNotFound = errors.New("client not found")
 	LimitErr    = errors.New("limit error")
+	BalanceErr  = errors.New("value bigger than balance")
 )
 
 func (r *repository) VerifyIfTokenExists(token string) error {
@@ -82,8 +84,84 @@ func (r *repository) DeleteSessionToken(sessionName string) error {
 	return nil
 }
 
+func (r *repository) UrubuTrading(ctx context.Context, user domain.User, value int, result chan domain.ValueTraded, errChan chan error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		errChan <- err
+		return
+	}
+	defer tx.Rollback()
+	var balance int
+
+	err = r.db.QueryRowContext(context.Background(), "SELECT balance FROM clients WHERE fullname=$1", user.Username).Scan(&balance)
+	if err != nil {
+		_ = tx.Rollback()
+		errChan <- err
+		return
+	}
+
+	if balance < value {
+		_ = tx.Rollback()
+		errChan <- BalanceErr
+		return
+	}
+
+	key1, _ := uuid.NewV4()
+	key2, _ := uuid.NewV4()
+
+	var newbalance int
+
+	if key1.String() != key2.String() {
+		newbalance = balance - value
+
+		stmt, err := r.db.PrepareContext(context.Background(), "UPDATE clients SET balance= $1 WHERE fullname=$2")
+		if err != nil {
+			_ = tx.Rollback()
+			errChan <- err
+			return
+		}
+		if _, err := stmt.ExecContext(ctx, newbalance, user.Password); err != nil {
+			_ = tx.Rollback()
+			errChan <- err
+			return
+
+		}
+
+		result <- 0
+		return
+	}
+
+	if key1.String() == key2.String() {
+		newbalance = value * 10
+
+		stmt, err := r.db.PrepareContext(context.Background(), "UPDATE clients SET balance= $1 WHERE fullname=$2")
+		if err != nil {
+			_ = tx.Rollback()
+			errChan <- err
+			return
+		}
+		if _, err := stmt.ExecContext(ctx, newbalance, user.Password); err != nil {
+			_ = tx.Rollback()
+			errChan <- err
+			return
+
+		}
+		result <- domain.ValueTraded(newbalance)
+		return
+
+	}
+
+	if err := tx.Commit(); err != nil {
+		_ = tx.Rollback()
+		errChan <- err
+		return
+	}
+}
+
 func (r *repository) GetUsernameAndPassword(ctx context.Context, name string) (domain.User, error) {
 	var user domain.User
+
+	// TODO: fix pointer error
 
 	userRedis, err := r.redis.Get(name).Result()
 	if err.Error() != "redis: nil" {
@@ -249,7 +327,7 @@ func (r *repository) CreateTransaction(ctx context.Context, t domain.Transaction
 
 	if (newbalance + limit) < 0 {
 		_ = tx.Rollback()
-		errChan <- err
+		errChan <- LimitErr
 
 		return
 	}
