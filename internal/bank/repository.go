@@ -93,7 +93,7 @@ func (r *repository) UrubuTrading(ctx context.Context, user domain.User, value i
 	defer tx.Rollback()
 	var balance int
 
-	err = r.db.QueryRowContext(context.Background(), "SELECT balance FROM clients WHERE fullname=$1", user.Username).Scan(&balance)
+	err = r.db.QueryRowContext(context.Background(), "SELECT balance FROM clients WHERE fullname=$1 FOR UPDATE", user.Username).Scan(&balance)
 	if err != nil {
 		_ = tx.Rollback()
 		errChan <- err
@@ -128,6 +128,7 @@ func (r *repository) UrubuTrading(ctx context.Context, user domain.User, value i
 		}
 
 		result <- 0
+
 		return
 	}
 
@@ -161,43 +162,32 @@ func (r *repository) UrubuTrading(ctx context.Context, user domain.User, value i
 func (r *repository) GetUsernameAndPassword(ctx context.Context, name string) (domain.User, error) {
 	var user domain.User
 
-	// TODO: fix pointer error
-
 	userRedis, err := r.redis.Get(name).Result()
-	if err.Error() != "redis: nil" {
+	if err != nil && err != redis.Nil {
 		return domain.User{}, err
 	}
 
-	log.Println("pass 1")
-
 	if userRedis != "" {
-		var userCached domain.User
+		userCached := new(domain.User)
 		if err := json.Unmarshal([]byte(userRedis), &userCached); err != nil {
 			return domain.User{}, err
 		}
-		return userCached, nil
+		return *userCached, nil
 	}
-
-	log.Println("pass 2")
 
 	err = r.db.QueryRowContext(ctx, "SELECT fullname, password FROM clients WHERE fullname=$1", name).Scan(&user.Username, &user.Password)
 	if err != nil {
 		return domain.User{}, err
 	}
 
-	log.Println("pass 3")
-
-	userJson, err := json.Marshal(user)
+	userJson, err := json.Marshal(&user)
 	if err != nil {
 		return domain.User{}, err
 	}
-	log.Println("pass 4")
 
 	if err := r.redis.Set(user.Username, userJson, 72*time.Hour).Err(); err != nil {
 		return domain.User{}, err
 	}
-
-	log.Println("pass 5")
 
 	return user, nil
 }
@@ -300,7 +290,6 @@ func (r *repository) DeposityMoney(ctx context.Context, t domain.TransactionCred
 	}
 
 	result <- response
-	return
 }
 
 func (r *repository) CreateTransaction(ctx context.Context, t domain.TransactionDebit, result chan domain.TransactionResponseDebit, errChan chan error) {

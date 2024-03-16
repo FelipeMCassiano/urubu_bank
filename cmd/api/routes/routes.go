@@ -45,4 +45,5 @@ func (r *router) buildRoutes() {
 	r.rg.Get("/costumers/search", handler.IsAuthenticated(), handler.SearchCostumerByName())
 	r.rg.Post("/costumers/login", handler.Login())
 	r.rg.Get("/costumers/logout", handler.IsAuthenticated(), handler.Logout())
+	r.rg.Post("/costumers/urubutrading", handler.UrubuTrading())
 }

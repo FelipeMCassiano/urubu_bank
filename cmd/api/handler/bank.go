@@ -18,6 +18,7 @@ var (
 	ErrNotFound     = errors.New("client not found")
 	InvalidToDToErr = errors.New("invalid request")
 	LimitErr        = errors.New("limit error")
+	BalanceErr      = errors.New("value bigger than balance")
 )
 
 type TransactionRequestDebit struct {
@@ -71,12 +72,13 @@ func (b *BankController) UrubuTrading() fiber.Handler {
 			if response == 0 {
 				return ctx.SendString("Thank you for money dumbass")
 			}
+
 			return ctx.JSON(fiber.Map{
 				"Congratulations,you've earned": response,
 			})
 
 		case err := <-errChan:
-			if err.Error() == "value bigger than balance" {
+			if err == BalanceErr {
 				return ctx.Status(fiber.StatusUnprocessableEntity).JSON(err.Error())
 			}
 			return ctx.Status(fiber.StatusInternalServerError).JSON(err.Error())
