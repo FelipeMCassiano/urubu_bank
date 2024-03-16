@@ -113,6 +113,7 @@ func (r *repository) UrubuTrading(ctx context.Context, user domain.User, value i
 
 	if key1.String() != key2.String() {
 		newbalance = balance - value
+		log.Println("pass 1")
 
 		stmt, err := r.db.PrepareContext(context.Background(), "UPDATE clients SET balance= $1 WHERE fullname=$2")
 		if err != nil {
@@ -120,12 +121,19 @@ func (r *repository) UrubuTrading(ctx context.Context, user domain.User, value i
 			errChan <- err
 			return
 		}
-		if _, err := stmt.ExecContext(ctx, newbalance, user.Password); err != nil {
+		if _, err := stmt.ExecContext(context.Background(), newbalance, user.Username); err != nil {
 			_ = tx.Rollback()
 			errChan <- err
 			return
 
 		}
+
+		if err := tx.Commit(); err != nil {
+			_ = tx.Rollback()
+			errChan <- err
+			return
+		}
+		log.Println("pass 1")
 
 		result <- 0
 
@@ -141,12 +149,19 @@ func (r *repository) UrubuTrading(ctx context.Context, user domain.User, value i
 			errChan <- err
 			return
 		}
-		if _, err := stmt.ExecContext(ctx, newbalance, user.Password); err != nil {
+		if _, err := stmt.ExecContext(context.Background(), newbalance, user.Password); err != nil {
 			_ = tx.Rollback()
 			errChan <- err
 			return
 
 		}
+
+		if err := tx.Commit(); err != nil {
+			_ = tx.Rollback()
+			errChan <- err
+			return
+		}
+
 		result <- domain.ValueTraded(newbalance)
 		return
 
