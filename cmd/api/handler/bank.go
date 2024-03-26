@@ -11,6 +11,7 @@ import (
 	"github.com/go-playground/validator/v10"
 	"github.com/go-redis/redis"
 	"github.com/gofiber/fiber/v2"
+	"golang.org/x/crypto/bcrypt"
 )
 
 var (
@@ -34,7 +35,7 @@ type TransactionRequestCredit struct {
 }
 type UserLoginRequest struct {
 	Username string `json:"username" validate:"required"`
-	Password string `json:"password" validate:"required"`
+	Password string `json:"password" validate:"required, min=1, max=10"`
 }
 type UrubuTradingRequest struct {
 	Username string `json:"username" validate:"required"`
@@ -92,7 +93,7 @@ func (b *BankController) UrubuTrading() fiber.Handler {
 			return ctx.Status(fiber.StatusNotFound).SendString(err.Error())
 		}
 
-		if request.Password != user.Password {
+		if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(request.Password)); err != nil {
 			return ctx.Status(fiber.StatusUnauthorized).SendString("Password not correct")
 		}
 
@@ -159,7 +160,7 @@ func (b *BankController) Login() fiber.Handler {
 			return err
 		}
 
-		if user.Password != userLogin.Password {
+		if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(userLogin.Password)); err != nil {
 			return ctx.Status(fiber.StatusUnauthorized).SendString("Invalid password or usesrname")
 		}
 

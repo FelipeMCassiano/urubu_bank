@@ -1,10 +1,10 @@
-CREATE EXTENSION IF NOT EXISTS pg_trgm;
+CjEATE EXTENSION IF NOT EXISTS pg_trgm;
 
 CREATE  TABLE clients (
 	id SERIAL PRIMARY KEY,
 	fullname TEXT NOT NULL,
     birth VARCHAR(10) NOT NULL,  
-    password VARCHAR(30) NOT NULL,
+    password TEXT NOT NULL,
 	credit_limit INTEGER NOT NULL,
     balance INTEGER DEFAULT 0,
     urubukey  TEXT 

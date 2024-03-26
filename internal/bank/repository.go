@@ -423,7 +423,6 @@ func (r *repository) CreateTransaction(ctx context.Context, t domain.Transaction
 	}
 
 	result <- response
-
 	return
 }
 
@@ -434,7 +433,6 @@ func (r *repository) CreateNewAccount(ctx context.Context, client domain.CreateC
 		return domain.CreatedCostumer{}, err
 	}
 	password, _ := bcrypt.GenerateFromPassword([]byte(client.Password), 10)
-	log.Println(len(password))
 
 	createdClient := domain.CreatedCostumer{
 		Fullname: client.Fullname,
@@ -445,7 +443,7 @@ func (r *repository) CreateNewAccount(ctx context.Context, client domain.CreateC
 	var id int
 
 	err = tx.QueryRowContext(context.Background(), "INSERT INTO clients (fullname, birth, credit_limit, password) VALUES ($1, $2, $3, $4) RETURNING id",
-		client.Fullname, client.Birth, client.Limit, client.Password).Scan(&id)
+		client.Fullname, client.Birth, client.Limit, string(password)).Scan(&id)
 	if err != nil {
 		_ = tx.Rollback()
 		return domain.CreatedCostumer{}, err
