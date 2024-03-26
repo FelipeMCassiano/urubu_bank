@@ -12,6 +12,7 @@ import (
 	"github.com/FelipeMCassiano/urubu_bank/internal/domain"
 	"github.com/go-redis/redis"
 	"github.com/gofrs/uuid"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type Respository interface {
@@ -432,6 +433,8 @@ func (r *repository) CreateNewAccount(ctx context.Context, client domain.CreateC
 		_ = tx.Rollback()
 		return domain.CreatedCostumer{}, err
 	}
+	password, _ := bcrypt.GenerateFromPassword([]byte(client.Password), 10)
+	log.Println(len(password))
 
 	createdClient := domain.CreatedCostumer{
 		Fullname: client.Fullname,

@@ -4,11 +4,11 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"strconv"
 	"time"
 
 	"github.com/FelipeMCassiano/urubu_bank/internal/bank"
 	"github.com/FelipeMCassiano/urubu_bank/internal/domain"
+	"github.com/go-playground/validator/v10"
 	"github.com/go-redis/redis"
 	"github.com/gofiber/fiber/v2"
 )
@@ -32,9 +32,25 @@ type TransactionRequestCredit struct {
 	Kind        string `json:"kind" validate:"required,oneof=credit"`
 	Description string `json:"description" validate:"required, min=1, max=10"`
 }
+type UserLoginRequest struct {
+	Username string `json:"username" validate:"required"`
+	Password string `json:"password" validate:"required"`
+}
+type UrubuTradingRequest struct {
+	Username string `json:"username" validate:"required"`
+	Password string `json:"password" validate:"required"`
+	Value    int    `json:"value" validate:"required,gt=0"`
+}
 
 type BankController struct {
 	bankService bank.Service
+}
+
+type ErrorResponse struct {
+	Error       bool
+	FailedField string
+	Tag         string
+	Value       interface{}
 }
 
 func NewBank(s bank.Service) *BankController {
@@ -43,29 +59,47 @@ func NewBank(s bank.Service) *BankController {
 	}
 }
 
+var validate *validator.Validate
+
+func init() {
+	validate = validator.New()
+}
+
+func validateStruct(data interface{}) error {
+	err := validate.Struct(data)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 const sessionName = "session-name"
 
 func (b *BankController) UrubuTrading() fiber.Handler {
 	return func(ctx *fiber.Ctx) error {
-		username := ctx.FormValue("username")
-		val := ctx.FormValue("value")
-		password := ctx.FormValue("password")
+		request := UrubuTradingRequest{}
 
-		value, _ := strconv.Atoi(val)
+		if err := ctx.BodyParser(request); err != nil {
+			return ctx.Status(fiber.StatusUnprocessableEntity).JSON(err.Error())
+		}
 
-		user, err := b.bankService.GetUsernameAndPassword(ctx.Context(), username)
+		if err := validateStruct(request); err != nil {
+			return ctx.Status(fiber.StatusUnprocessableEntity).JSON(err.Error())
+		}
+
+		user, err := b.bankService.GetUsernameAndPassword(ctx.Context(), request.Username)
 		if err != nil {
 			return ctx.Status(fiber.StatusNotFound).SendString(err.Error())
 		}
 
-		if password != user.Password {
+		if request.Password != user.Password {
 			return ctx.Status(fiber.StatusUnauthorized).SendString("Password not correct")
 		}
 
 		result := make(chan domain.ValueTraded, 1)
 		errChan := make(chan error, 1)
 
-		go b.bankService.UrubuTrading(ctx.Context(), user, value, result, errChan)
+		go b.bankService.UrubuTrading(ctx.Context(), user, request.Value, result, errChan)
 
 		select {
 		case response := <-result:
@@ -111,15 +145,21 @@ func (b *BankController) IsAuthenticated() fiber.Handler {
 
 func (b *BankController) Login() fiber.Handler {
 	return func(ctx *fiber.Ctx) error {
-		username := ctx.FormValue("username")
-		password := ctx.FormValue("password")
+		userLogin := UserLoginRequest{}
 
-		user, err := b.bankService.GetUsernameAndPassword(ctx.Context(), username)
+		if err := ctx.BodyParser(userLogin); err != nil {
+			return ctx.Status(fiber.StatusUnprocessableEntity).JSON(err.Error())
+		}
+
+		if err := validateStruct(userLogin); err != nil {
+			return ctx.Status(fiber.StatusUnprocessableEntity).JSON(err.Error())
+		}
+		user, err := b.bankService.GetUsernameAndPassword(ctx.Context(), userLogin.Username)
 		if err != nil {
 			return err
 		}
 
-		if user.Password != password {
+		if user.Password != userLogin.Password {
 			return ctx.Status(fiber.StatusUnauthorized).SendString("Invalid password or usesrname")
 		}
 
@@ -163,6 +203,10 @@ func (b *BankController) DeposityMoney() fiber.Handler {
 			return ctx.Status(fiber.StatusBadRequest).JSON(ErrInvalidJson.Error())
 		}
 
+		if err := validateStruct(input); err != nil {
+			return ctx.Status(fiber.StatusUnprocessableEntity).JSON(err.Error())
+		}
+
 		id, _ := ctx.ParamsInt("id")
 		_, err := b.bankService.VerifyIfCostumerExists(stdctx, id)
 		if err != nil {
@@ -200,6 +244,10 @@ func (b *BankController) CreateTransaction() fiber.Handler {
 
 		if err := ctx.BodyParser(input); err != nil {
 			return ctx.Status(fiber.StatusBadRequest).JSON(ErrInvalidJson.Error())
+		}
+
+		if err := validateStruct(input); err != nil {
+			return ctx.Status(fiber.StatusUnprocessableEntity).JSON(err.Error())
 		}
 
 		log.Println(input.Description)
@@ -265,6 +313,10 @@ func (b *BankController) CreateNewAccount() fiber.Handler {
 
 		if err := ctx.BodyParser(&newcostumer); err != nil {
 			return ctx.Status(fiber.StatusBadRequest).JSON(err.Error())
+		}
+
+		if err := validateStruct(newcostumer); err != nil {
+			return ctx.Status(fiber.StatusUnprocessableEntity).JSON(err.Error())
 		}
 
 		createdCostumer, err := b.bankService.CreateNewAccount(stdctx, newcostumer)

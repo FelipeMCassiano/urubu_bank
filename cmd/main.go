@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"log"
+	"os"
 
 	"github.com/FelipeMCassiano/urubu_bank/cmd/api/routes"
 	"github.com/go-redis/redis"
@@ -12,7 +13,7 @@ import (
 )
 
 func main() {
-	db, err := sql.Open("postgres", "host=localhost user=urubu password=urubu dbname=urubu sslmode=disable")
+	db, err := sql.Open("postgres", os.Getenv("DATABASE_URL"))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -27,7 +28,7 @@ func main() {
 	log.Println("Connected!")
 
 	redisClient := redis.NewClient(&redis.Options{
-		Addr:     "localhost:6379",
+		Addr:     "cache:6379",
 		Password: "",
 		DB:       0,
 	})
@@ -40,7 +41,7 @@ func main() {
 	router := routes.NewRouter(eng, db, redisClient)
 	router.MapRoutes()
 
-	if err := eng.Listen(":8080"); err != nil {
+	if err := eng.Listen(":" + os.Getenv("APP_PORT")); err != nil {
 		panic(err)
 	}
 }
