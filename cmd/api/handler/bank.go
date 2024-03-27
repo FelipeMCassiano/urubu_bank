@@ -157,11 +157,11 @@ func (b *BankController) Login() fiber.Handler {
 		}
 		user, err := b.bankService.GetUsernameAndPassword(ctx.Context(), userLogin.Username)
 		if err != nil {
-			return err
+			return ctx.Status(fiber.StatusNotFound).SendString("user not found")
 		}
 
 		if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(userLogin.Password)); err != nil {
-			return ctx.Status(fiber.StatusUnauthorized).SendString("Invalid password or usesrname")
+			return ctx.Status(fiber.StatusUnauthorized).SendString("Invalid password")
 		}
 
 		token, err := b.bankService.CreateSessionToken(sessionName)

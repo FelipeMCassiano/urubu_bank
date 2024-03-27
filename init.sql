@@ -2,7 +2,7 @@ CjEATE EXTENSION IF NOT EXISTS pg_trgm;
 
 CREATE  TABLE clients (
 	id SERIAL PRIMARY KEY,
-	fullname TEXT NOT NULL,
+	fullname TEXT NOT NULL UNIQUE,
     birth VARCHAR(10) NOT NULL,  
     password TEXT NOT NULL,
 	credit_limit INTEGER NOT NULL,
